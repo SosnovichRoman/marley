@@ -25,7 +25,7 @@
  "owner": "Administrator",
  "payment_button_label": "Buy Now",
  "print_format": "Lab Test Print",
- "published": 1,
+ "published": 0,
  "route": "lab-test",
  "route_to_success_link": 0,
  "show_attachments": 0,

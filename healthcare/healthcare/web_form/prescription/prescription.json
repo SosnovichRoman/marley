@@ -25,7 +25,7 @@
  "owner": "Administrator", 
  "payment_button_label": "Buy Now", 
  "print_format": "Encounter Print", 
- "published": 1, 
+ "published": 0, 
  "route": "prescription", 
  "show_in_grid": 0, 
  "show_sidebar": 1, 

@@ -91,7 +91,11 @@ def get_patients():
 
 @frappe.whitelist()
 def get_settings():
-	return frappe.get_single("Healthcare Settings")
+	settings = frappe.get_single("Healthcare Settings")
+	return {
+		"show_diagnostics_tab": settings.show_diagnostics_tab,
+		"collect_payment": settings.collect_payment,
+	}
 
 
 @frappe.whitelist()
@@ -217,11 +221,59 @@ def get_fees(practitioner=None, date=None):
 	}
 
 
+PRINTABLE_DOCTYPES = ("Sales Invoice", "Patient Encounter", "Diagnostic Report")
+
+
+def assert_patient_can_print(doctype: str, name: str) -> None:
+	if doctype not in PRINTABLE_DOCTYPES:
+		frappe.throw(_("Not allowed to print this document."), frappe.PermissionError)
+
+	patient = frappe.db.get_value(doctype, name, "patient")
+	if not patient or patient not in get_patients_with_relations():
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+
+def _docnames(name) -> list[str]:
+	if isinstance(name, (list, tuple)):
+		names = list(name)
+	elif isinstance(name, str) and name.strip().startswith("["):
+		parsed = json.loads(name)
+		if not isinstance(parsed, list):
+			frappe.throw(_("Not permitted"), frappe.PermissionError)
+		names = parsed
+	elif isinstance(name, str) and name:
+		names = [name]
+	else:
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	names = [docname for docname in names if docname]
+	if not names:
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	return names
+
+
+def _default_pdf_options(doctype: str) -> str:
+	if doctype == "Diagnostic Report":
+		margins = {
+			"margin-top": "30mm",
+			"margin-bottom": "30mm",
+			"margin-left": "1mm",
+			"margin-right": "1mm",
+		}
+	else:
+		margins = {
+			"margin-top": "60mm",
+			"margin-bottom": "60mm",
+			"margin-left": "5mm",
+			"margin-right": "5mm",
+		}
+	margins["page-size"] = "A4"
+	return json.dumps(margins)
+
+
 @frappe.whitelist()
 def get_print_format(doctype: str, name: str):
-	allowed_doctypes = ["Sales Invoice", "Patient Encounter", "Diagnostic Report"]
-	if doctype not in allowed_doctypes:
-		frappe.throw(_("Not allowed to print this document."), frappe.PermissionError)
+	assert_patient_can_print(doctype, name)
 
 	meta = frappe.get_meta(doctype)
 
@@ -237,6 +289,36 @@ def get_print_format(doctype: str, name: str):
 		letter_head = frappe.db.exists("Letter Head", {"is_default": 1})
 
 	return {"letter_head": letter_head, "print_format": print_format}
+
+
+@frappe.whitelist()
+def download_pdf(doctype: str, name: str, options: str | None = None):
+	"""Print a document the logged-in patient owns. Replaces the generic Frappe PDF download."""
+	from frappe.utils.print_format import download_multi_pdf
+
+	names = _docnames(name)
+	for docname in names:
+		assert_patient_can_print(doctype, docname)
+
+	fmt = get_print_format(doctype, names[0])
+	# Ownership is the gate. The Patient role has no read permission on these DocTypes,
+	# so the generic print path would reject the same document we just authorized.
+	previous_ignore = frappe.flags.ignore_permissions
+	previous_print = frappe.flags.ignore_print_permissions
+	frappe.flags.ignore_permissions = True
+	frappe.flags.ignore_print_permissions = True
+	try:
+		download_multi_pdf(
+			doctype,
+			json.dumps(names),
+			format=fmt["print_format"],
+			no_letterhead=not bool(fmt.get("letter_head")),
+			letterhead=fmt.get("letter_head"),
+			options=options or _default_pdf_options(doctype),
+		)
+	finally:
+		frappe.flags.ignore_permissions = previous_ignore
+		frappe.flags.ignore_print_permissions = previous_print
 
 
 def get_patients_with_relations():
