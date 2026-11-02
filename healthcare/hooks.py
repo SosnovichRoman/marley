@@ -223,6 +223,8 @@ auto_cancel_exempted_doctypes = [
 # Authentication and authorization
 # --------------------------------
 
+before_request = ["healthcare.healthcare.patient_portal_access.restrict_patient_portal"]
+
 # auth_hooks = [
 # 	"healthcare.auth.validate"
 # ]

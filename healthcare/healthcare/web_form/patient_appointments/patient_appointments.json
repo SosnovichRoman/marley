@@ -24,7 +24,7 @@
  "name": "patient-appointments", 
  "owner": "Administrator", 
  "payment_button_label": "Buy Now", 
- "published": 1, 
+ "published": 0, 
  "route": "patient-appointments", 
  "show_sidebar": 1, 
  "sidebar_items": [], 

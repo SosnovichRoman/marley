@@ -24,7 +24,7 @@
  "name": "personal-details", 
  "owner": "Administrator", 
  "payment_button_label": "Buy Now", 
- "published": 1, 
+ "published": 0, 
  "route": "personal-details", 
  "show_sidebar": 1, 
  "sidebar_items": [], 

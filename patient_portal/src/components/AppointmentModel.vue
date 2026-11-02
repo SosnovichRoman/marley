@@ -273,54 +273,23 @@ function appointmentDetails(appointment) {
 }
 
 function print(doctype, docname) {
-	let get_print_format = createResource({
-		url: "/api/method/healthcare.healthcare.api.patient_portal.get_print_format",
-		method: "POST",
-		makeParams() {
-			return {
-				doctype: doctype,
-				name: docname
-			}
-		},
-		onSuccess(response) {
-			if (response) {
-				const with_letterhead = response.letter_head ? 1 : 0;
-				const print_format = response.print_format;
-				const doc_names = JSON.stringify([docname,]);
-				const letterhead = response.letter_head;
-
-				let pdf_options = JSON.stringify({
-					"page-size": "A4",
-					"margin-top": "60mm",
-					"margin-bottom": "60mm",
-					"margin-left": "5mm",
-					"margin-right": "5mm",
-				});
-
-				const w = window.open(
-					"/api/method/frappe.utils.print_format.download_multi_pdf?" +
-						"doctype=" +
-						encodeURIComponent(doctype) +
-						"&name=" +
-						encodeURIComponent(doc_names) +
-						"&format=" +
-						encodeURIComponent(print_format) +
-						"&no_letterhead=" +
-						(with_letterhead ? "0" : "1") +
-						"&letterhead=" +
-						encodeURIComponent(letterhead) +
-						"&options=" +
-						encodeURIComponent(pdf_options)
-				);
-
-				if (!w) {
-					alert("Please enable pop-ups");
-					return;
-				}
-			}
-		}
-	});
-	get_print_format.fetch();
+	const names = Array.isArray(docname) ? docname : [docname]
+	const pdfOptions = JSON.stringify({
+		"page-size": "A4",
+		"margin-top": "60mm",
+		"margin-bottom": "60mm",
+		"margin-left": "5mm",
+		"margin-right": "5mm",
+	})
+	const w = window.open(
+		"/api/method/healthcare.healthcare.api.patient_portal.download_pdf?" +
+			"doctype=" + encodeURIComponent(doctype) +
+			"&name=" + encodeURIComponent(JSON.stringify(names)) +
+			"&options=" + encodeURIComponent(pdfOptions)
+	)
+	if (!w) {
+		alert("Please enable pop-ups")
+	}
 }
 
 function formatDate(dateStr) {
