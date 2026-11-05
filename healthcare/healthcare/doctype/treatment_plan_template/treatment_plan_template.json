@@ -25,6 +25,8 @@
   "ivestigation_procedures_tab",
   "medications_section",
   "drugs",
+  "recommendations_section",
+  "patient_recommendations",
   "plan_items_section",
   "items",
   "ip",
@@ -150,6 +152,17 @@
    "label": "Medications"
   },
   {
+   "fieldname": "recommendations_section",
+   "fieldtype": "Section Break",
+   "label": "Рекомендации пациенту"
+  },
+  {
+   "description": "Этот текст попадает в заметки приёма, когда шаблон подставляется по диагнозу.",
+   "fieldname": "patient_recommendations",
+   "fieldtype": "Text",
+   "label": "Рекомендации пациенту"
+  },
+  {
    "fieldname": "ivestigation_procedures_tab",
    "fieldtype": "Tab Break",
    "label": "Plan"
@@ -192,7 +205,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-12-25 09:36:41.967726",
+ "modified": "2026-11-05 15:16:00.000000",
  "modified_by": "Administrator",
  "module": "Healthcare",
  "name": "Treatment Plan Template",
