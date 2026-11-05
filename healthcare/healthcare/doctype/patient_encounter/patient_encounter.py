@@ -155,6 +155,15 @@ class PatientEncounter(Document):
 		for drug in plan_doc.drugs:
 			self.append("drug_prescription", (frappe.copy_doc(drug)).as_dict())
 
+		recommendations = (plan_doc.get("patient_recommendations") or "").strip()
+		if not recommendations:
+			return
+
+		if self.encounter_comment:
+			self.encounter_comment = f"{self.encounter_comment.rstrip()}\n{recommendations}"
+		else:
+			self.encounter_comment = recommendations
+
 	def set_treatment_plan_item(self, plan_item):
 		if plan_item.type == "Clinical Procedure Template":
 			self.append(
