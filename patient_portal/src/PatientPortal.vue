@@ -6,8 +6,17 @@
 					<div v-if="tab.label == 'Appointments'">
 						<AppointmentModel />
 					</div>
-					<div v-else-if="tab.label == 'Diagnostics'">
-						<DiagnosticModel />
+					<div v-else-if="tab.label == 'Visits'">
+						<EncounterModel />
+					</div>
+					<div v-else-if="tab.label == 'Medications'">
+						<MedicationModel />
+					</div>
+					<div v-else-if="tab.label == 'Orders'">
+						<OrdersModel />
+					</div>
+					<div v-else-if="tab.label == 'Medical Record'">
+						<MedicalRecord />
 					</div>
 				</template>
 			</Tabs>
@@ -32,9 +41,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, provide } from 'vue'
 import AppointmentModel from '@/components/AppointmentModel.vue'
-import DiagnosticModel from '@/components/DiagnosticModel.vue'
+import EncounterModel from '@/components/EncounterModel.vue'
+import MedicationModel from '@/components/MedicationModel.vue'
+import OrdersModel from '@/components/OrdersModel.vue'
+import MedicalRecord from '@/components/MedicalRecord.vue'
 
 import {
 	createResource,
@@ -45,11 +57,34 @@ import {
 let alert_dialog = ref(false);
 
 const portal_tabs = ref(0);
+const requestedEncounter = ref(null);
+const loggedInPatient = ref(null);
 
 let dialog_title = ref("");
 let dialog_message = ref("");
 
 let healthcareSettings = ref({});
+
+const tabs = [
+	{ label: 'Appointments' },
+	{ label: 'Visits' },
+	{ label: 'Medications' },
+	{ label: 'Orders' },
+	{ label: 'Medical Record' },
+]
+
+function openVisit(name) {
+	requestedEncounter.value = name
+	const index = tabs.findIndex((tab) => tab.label === 'Visits')
+	if (index >= 0) {
+		portal_tabs.value = index
+	}
+}
+
+provide('openVisit', openVisit)
+provide('requestedEncounter', requestedEncounter)
+provide('loggedInPatient', loggedInPatient)
+provide('healthcareSettings', healthcareSettings)
 
 let getHealthcareSettings = createResource({
 	url: "/api/method/healthcare.healthcare.api.patient_portal.get_settings",
@@ -62,25 +97,18 @@ let getHealthcareSettings = createResource({
 });
 getHealthcareSettings.fetch();
 
-const tabs = computed(() => {
-	let baseTabs = [{ label: 'Appointments' }]
-	if (healthcareSettings.value.show_diagnostics_tab) {
-		baseTabs.push({ label: 'Diagnostics' })
-	}
-	return baseTabs
-})
-
 let set_logged_in_patient = createResource({
 	url: "/api/method/healthcare.healthcare.api.patient_portal.get_logged_in_patient",
 	method: "GET",
 	onSuccess(response) {
+		loggedInPatient.value = response || null
 		if (response) {
 			localStorage.setItem("patient", JSON.stringify(response));
 		}
 	},
 	onError(error) {
-		dialog_message = error.messages?.[0] || error;
-		dialog_title = "Failed to load appointments";
+		dialog_message.value = error.messages?.[0] || error;
+		dialog_title.value = "Failed to load appointments";
 		alert_dialog.value = true;
 	}
 });

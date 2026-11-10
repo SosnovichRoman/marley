@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, time as dt_time, timedelta
 
 import frappe
 from frappe import _
@@ -51,14 +51,301 @@ def get_appointments():
 	return appointment_details
 
 
+def get_portal_patient():
+	"""Active patient linked to the current user. Relatives are not included."""
+	if frappe.session.user == "Guest":
+		return None
+
+	return frappe.db.get_value("Patient", {"status": "Active", "user_id": frappe.session.user}, "name")
+
+
+def _as_time(value):
+	if not value:
+		return None
+	if isinstance(value, timedelta):
+		value = (datetime.min + value).time()
+	if isinstance(value, dt_time):
+		return value.strftime("%H:%M")
+	text = str(value)
+	return text[:5] if len(text) >= 5 else text
+
+
+def _submitted_encounters(patient):
+	rows = frappe.get_all(
+		"Patient Encounter",
+		filters={"patient": patient, "docstatus": 1},
+		fields=[
+			"name",
+			"encounter_date",
+			"encounter_time",
+			"practitioner_name",
+			"medical_department",
+			"encounter_comment",
+			"appointment",
+		],
+		order_by="encounter_date desc, encounter_time desc",
+	)
+	for row in rows:
+		row.encounter_time = _as_time(row.encounter_time)
+	return rows
+
+
+def _child_rows(doctype, parents, parentfield, fields):
+	if not parents:
+		return []
+
+	return frappe.get_all(
+		doctype,
+		filters={
+			"parent": ["in", parents],
+			"parenttype": "Patient Encounter",
+			"parentfield": parentfield,
+		},
+		fields=["parent", "idx", *fields],
+		order_by="idx asc",
+	)
+
+
+def _group_children(rows, field):
+	grouped = {}
+	for row in rows:
+		grouped.setdefault(row.parent, []).append(row.get(field))
+	return grouped
+
+
+def _encounter_header(encounter):
+	return {
+		"encounter": encounter.name,
+		"encounter_date": encounter.encounter_date,
+		"encounter_time": encounter.encounter_time,
+		"practitioner_name": encounter.practitioner_name,
+		"medical_department": encounter.medical_department,
+	}
+
+
 @frappe.whitelist()
 def get_logged_in_patient():
-	patient = frappe.db.exists("Patient", {"status": "Active", "user_id": frappe.session.user})
+	patient = get_portal_patient()
 
 	if not patient:
 		return None
 
 	return {"value": patient, "label": frappe.get_cached_value("Patient", patient, "patient_name")}
+
+
+@frappe.whitelist()
+def get_encounters():
+	patient = get_portal_patient()
+	if not patient:
+		return []
+
+	encounters = _submitted_encounters(patient)
+	diagnoses = _group_children(
+		_child_rows(
+			"Patient Encounter Diagnosis",
+			[row.name for row in encounters],
+			"diagnosis",
+			["diagnosis"],
+		),
+		"diagnosis",
+	)
+
+	return [
+		{
+			"name": row.name,
+			"encounter_date": row.encounter_date,
+			"encounter_time": row.encounter_time,
+			"practitioner_name": row.practitioner_name,
+			"medical_department": row.medical_department,
+			"appointment": row.appointment,
+			"diagnosis": diagnoses.get(row.name, []),
+		}
+		for row in encounters
+	]
+
+
+@frappe.whitelist()
+def get_encounter(name):
+	patient = get_portal_patient()
+	encounter = frappe.db.get_value(
+		"Patient Encounter",
+		name,
+		[
+			"name",
+			"patient",
+			"docstatus",
+			"encounter_date",
+			"encounter_time",
+			"practitioner_name",
+			"medical_department",
+			"encounter_comment",
+			"appointment",
+		],
+		as_dict=True,
+	)
+	if not patient or not encounter or encounter.patient != patient or encounter.docstatus != 1:
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	encounter.encounter_time = _as_time(encounter.encounter_time)
+	parents = [encounter.name]
+	symptoms = _child_rows("Patient Encounter Symptom", parents, "symptoms", ["complaint"])
+	diagnoses = _child_rows("Patient Encounter Diagnosis", parents, "diagnosis", ["diagnosis"])
+	drugs = _child_rows(
+		"Drug Prescription",
+		parents,
+		"drug_prescription",
+		[
+			"drug_name",
+			"dosage",
+			"period",
+			"dosage_form",
+			"comment",
+			"dosage_by_interval",
+			"interval",
+			"interval_uom",
+		],
+	)
+	procedures = _child_rows(
+		"Procedure Prescription",
+		parents,
+		"procedure_prescription",
+		["procedure", "procedure_name", "date", "comments", "no_of_sessions"],
+	)
+	labs = _child_rows(
+		"Lab Prescription",
+		parents,
+		"lab_test_prescription",
+		["lab_test_name", "observation_template", "lab_test_comment", "priority", "service_request"],
+	)
+
+	return {
+		**_encounter_header(encounter),
+		"name": encounter.name,
+		"appointment": encounter.appointment,
+		"encounter_comment": encounter.encounter_comment,
+		"symptoms": [row.complaint for row in symptoms],
+		"diagnosis": [row.diagnosis for row in diagnoses],
+		"medications": [_medication_row(row) for row in drugs],
+		"procedures": [_procedure_row(row) for row in procedures],
+		"lab_tests": [_lab_row(row) for row in labs],
+	}
+
+
+def _medication_row(row):
+	return {
+		"drug_name": row.drug_name,
+		"dosage": row.dosage,
+		"period": row.period,
+		"dosage_form": row.dosage_form,
+		"comment": row.comment,
+		"dosage_by_interval": row.dosage_by_interval,
+		"interval": row.interval,
+		"interval_uom": row.interval_uom,
+	}
+
+
+def _procedure_row(row):
+	return {
+		"procedure": row.procedure,
+		"procedure_name": row.procedure_name or row.procedure,
+		"date": row.date,
+		"comments": row.comments,
+		"no_of_sessions": row.no_of_sessions,
+	}
+
+
+def _lab_row(row):
+	return {
+		"lab_test_name": row.lab_test_name or row.observation_template,
+		"comment": row.lab_test_comment,
+		"priority": row.priority,
+		"service_request": row.service_request,
+	}
+
+
+def _flatten_prescriptions(child_doctype, parentfield, fields, map_row):
+	patient = get_portal_patient()
+	if not patient:
+		return []
+
+	encounters = _submitted_encounters(patient)
+	by_name = {row.name: row for row in encounters}
+	children = _child_rows(child_doctype, list(by_name), parentfield, fields)
+	items = []
+	for row in children:
+		encounter = by_name[row.parent]
+		items.append({**_encounter_header(encounter), **map_row(row)})
+
+	items.sort(
+		key=lambda item: (str(item.get("encounter_date") or ""), str(item.get("encounter_time") or "")),
+		reverse=True,
+	)
+	return items
+
+
+@frappe.whitelist()
+def get_medications():
+	return _flatten_prescriptions(
+		"Drug Prescription",
+		"drug_prescription",
+		[
+			"drug_name",
+			"dosage",
+			"period",
+			"dosage_form",
+			"comment",
+			"dosage_by_interval",
+			"interval",
+			"interval_uom",
+		],
+		_medication_row,
+	)
+
+
+@frappe.whitelist()
+def get_procedure_orders():
+	return _flatten_prescriptions(
+		"Procedure Prescription",
+		"procedure_prescription",
+		["procedure", "procedure_name", "date", "comments", "no_of_sessions"],
+		_procedure_row,
+	)
+
+
+@frappe.whitelist()
+def get_lab_orders():
+	return _flatten_prescriptions(
+		"Lab Prescription",
+		"lab_test_prescription",
+		["lab_test_name", "observation_template", "lab_test_comment", "priority", "service_request"],
+		_lab_row,
+	)
+
+
+@frappe.whitelist()
+def get_medical_record():
+	patient = get_portal_patient()
+	if not patient:
+		return None
+
+	return frappe.db.get_value(
+		"Patient",
+		patient,
+		[
+			"name",
+			"patient_name",
+			"sex",
+			"dob",
+			"blood_group",
+			"mobile",
+			"email",
+			"allergies",
+			"medication",
+			"medical_history",
+			"surgical_history",
+		],
+		as_dict=True,
+	)
 
 
 @frappe.whitelist()
