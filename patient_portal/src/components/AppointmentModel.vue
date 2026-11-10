@@ -191,14 +191,23 @@
 									<p class="mt-1 text-lg font-semibold text-gray-900">
 										{{ selectedAppointment.encounter }}
 									</p>
-									<Button :ref_for="true" theme="gray" size="md"
-										@click="print('Patient Encounter', selectedAppointment.encounter)">
-										<Tooltip :text="'Print Prescription'" placement="top">
-											<slot name="icon">
-												<FeatherIcon :name="'printer'" class="size-4 text-ink-white-7" />
-											</slot>
-										</Tooltip>
-									</Button>
+									<div class="flex items-center gap-2">
+										<Button
+											v-if="isOwnEncounter(selectedAppointment)"
+											variant="solid"
+											size="md"
+											label="View Visit"
+											@click="viewVisit(selectedAppointment.encounter)"
+										/>
+										<Button :ref_for="true" theme="gray" size="md"
+											@click="print('Patient Encounter', selectedAppointment.encounter)">
+											<Tooltip :text="'Print Prescription'" placement="top">
+												<slot name="icon">
+													<FeatherIcon :name="'printer'" class="size-4 text-ink-white-7" />
+												</slot>
+											</Tooltip>
+										</Button>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -226,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import BookAppointmentModel from '@/components/BookAppointmentModel.vue'
 import { formatCurrency } from "@/utils/formatters"
 
@@ -237,6 +246,9 @@ import {
 	Badge,
 	Tooltip
 } from 'frappe-ui'
+
+const openVisit = inject('openVisit', null)
+const loggedInPatient = inject('loggedInPatient', ref(null))
 
 let appointment_details = ref(false);
 let make_appointment_dialog = ref(false);
@@ -270,6 +282,19 @@ get_appointments.fetch();
 function appointmentDetails(appointment) {
 	selectedAppointment.value = appointment;
 	appointment_details.value = true;
+}
+
+function isOwnEncounter(appointment) {
+	return Boolean(
+		appointment?.encounter
+		&& loggedInPatient.value?.value
+		&& appointment.patient === loggedInPatient.value.value
+	)
+}
+
+function viewVisit(name) {
+	appointment_details.value = false
+	if (openVisit) openVisit(name)
 }
 
 function print(doctype, docname) {
