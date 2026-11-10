@@ -643,7 +643,8 @@ def build_order_map(orders, from_invoice=False):
 	orders_map = {}
 	for row in orders:
 		patient_doc = frappe.get_doc("Patient", row.patient)
-		row["days"] = patient_doc.calculate_age().get("age_in_days") or 0
+		age = patient_doc.calculate_age()
+		row["days"] = age.get("age_in_days") if age else None
 		key = (row.order_name, row.order_date)
 		if key not in orders_map:
 			billing_status = (
